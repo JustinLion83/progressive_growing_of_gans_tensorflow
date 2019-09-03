@@ -6,6 +6,7 @@ import scipy.misc
 import h5py
 
 def mkdir_p(path):
+    '''檢查資料夾是否存在'''
     try:
         os.makedirs(path)
     except OSError as exc:  # Python >2.5
@@ -16,7 +17,6 @@ def mkdir_p(path):
 
 class CelebA(object):
     def __init__(self, image_path):
-
         self.dataname = "CelebA"
         self.channel = 3
         self.image_list = self.load_celebA(image_path=image_path)
@@ -30,6 +30,7 @@ class CelebA(object):
         return images_list
 
     def getShapeForData(self, filenames, resize_w=64):
+        '''調整輸入的批圖為指定大小'''
         array = [get_image(batch_file, 128, is_crop=True, resize_w=resize_w,
                            is_grayscale=False) for batch_file in filenames]
 
@@ -38,13 +39,14 @@ class CelebA(object):
         return sample_images
 
     def getNextBatch(self, batch_num=0, batch_size=64):
+        '''取下一批次'''
         ro_num = len(self.image_list) / batch_size - 1
         if batch_num % ro_num == 0:
 
             length = len(self.image_list)
             perm = np.arange(length)
             np.random.shuffle(perm)
-            self.image_list = np.array(self.image_list)
+            self.image_list = np.array(self.image_list) # 將List轉成Array
             self.image_list = self.image_list[perm]
 
             print ("images shuffle")
