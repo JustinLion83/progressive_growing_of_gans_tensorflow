@@ -4,51 +4,58 @@ from utils import save_images
 import numpy as np
 from scipy.ndimage.interpolation import zoom
 
+'''
+scipy.ndimage.zoom 用於上採樣與下採樣, Ex: scipy.ndimage.zoom(x, 2, order=0), 2代表縮放倍數, order代表要採用的插植方法
+
+order = 1: Bilinear interpolation
+order = 0: Nearest  interpolation
+order = 3: cubic    interpolation (Default)
+'''
 class PGGAN(object):
 
     # build model
     def __init__(self, batch_size, max_iters, model_path, read_model_path, data, sample_size, sample_path, log_dir,
                  learn_rate, lam_gp, lam_eps, PG, t, use_wscale, is_celeba):
-        self.batch_size = batch_size
-        self.max_iters = max_iters
-        self.gan_model_path = model_path
+        self.batch_size      = batch_size
+        self.max_iters       = max_iters
+        self.gan_model_path  = model_path
         self.read_model_path = read_model_path
-        self.data_In = data
-        self.sample_size = sample_size
-        self.sample_path = sample_path
-        self.log_dir = log_dir
-        self.learning_rate = learn_rate
-        self.lam_gp = lam_gp
-        self.lam_eps = lam_eps
-        self.pg = PG
-        self.trans = t
-        self.log_vars = []
-        self.channel = self.data_In.channel
-        self.output_size = 4 * pow(2, PG - 1)
-        self.use_wscale = use_wscale
-        self.is_celeba = is_celeba
-        self.images = tf.placeholder(tf.float32, [batch_size, self.output_size, self.output_size, self.channel])
-        self.z = tf.placeholder(tf.float32, [self.batch_size, self.sample_size])
-        self.alpha_tra = tf.Variable(initial_value=0.0, trainable=False,name='alpha_tra')
+        self.data_In         = data
+        self.sample_size     = sample_size
+        self.sample_path     = sample_path
+        self.log_dir         = log_dir
+        self.learning_rate   = learn_rate
+        self.lam_gp          = lam_gp             # 梯度懲罰項(參考WGAN-GP), 可考慮用光譜標準化代替
+        self.lam_eps         = lam_eps
+        self.pg              = PG
+        self.trans           = t
+        self.log_vars        = []
+        self.channel         = self.data_In.channel
+        self.output_size     = 4 * pow(2, PG - 1)
+        self.use_wscale      = use_wscale
+        self.is_celeba       = is_celeba
+        self.images          = tf.placeholder(tf.float32, [batch_size, self.output_size, self.output_size, self.channel])
+        self.z               = tf.placeholder(tf.float32, [self.batch_size, self.sample_size])
+        self.alpha_tra       = tf.Variable(initial_value=0.0, trainable=False, name='alpha_tra')
 
     def build_model_PGGan(self):
-        self.fake_images = self.generate(self.z, pg=self.pg, t=self.trans, alpha_trans=self.alpha_tra)
+        self.fake_images     = self.generate(self.z, pg=self.pg, t=self.trans, alpha_trans=self.alpha_tra)
         _, self.D_pro_logits = self.discriminate(self.images, reuse=False, pg = self.pg, t=self.trans, alpha_trans=self.alpha_tra)
         _, self.G_pro_logits = self.discriminate(self.fake_images, reuse=True,pg= self.pg, t=self.trans, alpha_trans=self.alpha_tra)
 
         # the defination of loss for D and G
-        self.D_loss = tf.reduce_mean(self.G_pro_logits) - tf.reduce_mean(self.D_pro_logits)
+        self.D_loss =  tf.reduce_mean(self.G_pro_logits) - tf.reduce_mean(self.D_pro_logits)
         self.G_loss = -tf.reduce_mean(self.G_pro_logits)
 
         # gradient penalty from WGAN-GP
         self.differences = self.fake_images - self.images
-        self.alpha = tf.random_uniform(shape=[self.batch_size, 1, 1, 1], minval=0., maxval=1.)
-        interpolates = self.images + (self.alpha * self.differences)
-        _, discri_logits= self.discriminate(interpolates, reuse=True, pg=self.pg, t=self.trans, alpha_trans=self.alpha_tra)
-        gradients = tf.gradients(discri_logits, [interpolates])[0]
+        self.alpha       = tf.random_uniform(shape=[self.batch_size, 1, 1, 1], minval=0., maxval=1.)
+        interpolates     = self.images + (self.alpha * self.differences)
+        _, discri_logits = self.discriminate(interpolates, reuse=True, pg=self.pg, t=self.trans, alpha_trans=self.alpha_tra)
+        gradients        = tf.gradients(discri_logits, [interpolates])[0] # [0]是因為tf.gradients()回傳是[Tensor], [0]為了取出 
 
-        # 2 norm
-        slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1, 2, 3]))
+        # L2 norm
+        slopes = tf.sqrt(tf.reduce_sum(tf.square(gradients), reduction_indices=[1, 2, 3])) # 沿著後3個Axis做標準化
         self.gradient_penalty = tf.reduce_mean((slopes - 1.) ** 2)
         tf.summary.scalar("gp_loss", self.gradient_penalty)
 
@@ -286,13 +293,3 @@ class PGGAN(object):
     def sample_z(self, mu, log_var):
         eps = tf.random_normal(shape=tf.shape(mu))
         return mu + tf.exp(log_var / 2) * eps
-
-
-
-
-
-
-
-
-
-
